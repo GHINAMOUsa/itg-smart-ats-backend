@@ -17,10 +17,9 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 10
 
-    # AI resume analysis (see app/ai_service.py). Leave ANTHROPIC_API_KEY empty to
-    # fall back to a deterministic skill-overlap heuristic instead of a real LLM call.
-    ANTHROPIC_API_KEY: str = ""
-    ANTHROPIC_MODEL: str = "claude-sonnet-4-5-20250929"
+    # AI resume analysis using Gemini API (Free tier friendly)
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     RESUME_TEXT_MAX_CHARS: int = 15000
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

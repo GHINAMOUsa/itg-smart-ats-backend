@@ -1,15 +1,3 @@
-"""
-Analyzes an extracted resume text against a job's requirements to produce the data
-shown on the candidate-details page: AI Match Score, matched/missing skills, the AI
-recommendation, and (new) structured experience/education/skills parsed straight out
-of the CV.
-
-If ANTHROPIC_API_KEY is not configured, or the API call / JSON parsing fails for any
-reason, this falls back to a transparent, deterministic skill-overlap heuristic so the
-application flow never breaks - it just won't have CV-derived experience/education in
-that case (only whatever the candidate typed into "Professional Skills" on the form).
-"""
-
 import json
 import re
 from datetime import date
@@ -18,9 +6,11 @@ from app.config import settings
 from app.models import Job
 
 try:
-    import anthropic
-except ImportError:  # pragma: no cover - anthropic is a hard requirement, but degrade gracefully
-    anthropic = None
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
+    types = None
 
 
 def _normalize(skill: str) -> str:
@@ -58,21 +48,13 @@ def _heuristic_analysis(job: Job, fallback_skills: list[str]) -> dict:
     }
 
 
-def _strip_code_fences(text: str) -> str:
-    text = text.strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
-    return text.strip()
-
-
 def _build_prompt(job: Job, resume_text: str, fallback_skills: list[str]) -> str:
     requirements = "\n".join(f"- {r.text}" for r in job.requirements) or "(none listed)"
     required_skills = ", ".join(s.skill for s in job.skills) or "(none listed)"
     stated_skills = ", ".join(fallback_skills) or "(none listed)"
 
     return f"""You are an ATS resume-screening assistant. Analyze the candidate's resume text
-below against the job, and respond with ONLY a single JSON object (no markdown fences, no
-prose before or after) matching exactly this schema:
+below against the job, and respond with ONLY a single JSON object matching exactly this schema:
 
 {{
   "match_score": <integer 0-100, how well the candidate fits this specific job>,
@@ -137,25 +119,31 @@ def analyze_resume(job: Job, resume_text: str, fallback_skills: list[str]) -> di
     """
     Returns a dict with: score, matched_skills, missing_skills, extracted_skills,
     recommendation, experience (list of dicts with parsed `date` objects), education.
+    Uses Gemini API Centralized Client.
     """
-    if not settings.ANTHROPIC_API_KEY or anthropic is None:
+    if not settings.GEMINI_API_KEY or genai is None or types is None:
         return _heuristic_analysis(job, fallback_skills)
 
     try:
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        response = client.messages.create(
-            model=settings.ANTHROPIC_MODEL,
-            max_tokens=2000,
-            messages=[{"role": "user", "content": _build_prompt(job, resume_text, fallback_skills)}],
+        # تهيئة عميل جيميناي باستخدام الـ SDK الحديث
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        
+        # استدعاء النموذج مع تفعيل خاصية إجبار الـ JSON Mode
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=_build_prompt(job, resume_text, fallback_skills),
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
         )
-        raw_text = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
-        data = json.loads(_strip_code_fences(raw_text))
+        
+        data = json.loads(response.text)
 
         experience = []
         for exp in data.get("experience", []):
             start = _parse_date(exp.get("start_date"))
             if not start or not exp.get("title") or not exp.get("company"):
-                continue  # skip incomplete entries rather than guessing
+                continue  # تخطي السجلات غير المكتملة
             experience.append(
                 {
                     "title": exp["title"],
@@ -192,6 +180,5 @@ def analyze_resume(job: Job, resume_text: str, fallback_skills: list[str]) -> di
             "education": education,
         }
     except Exception:
-        # Any failure (network, auth, malformed JSON, rate limit, etc.) - degrade to the heuristic
-        # rather than failing the candidate's application submission.
+        # الرجوع التلقائي للمحاكاة المحلية في حال حدوث أي خطأ أمني أو شبكي
         return _heuristic_analysis(job, fallback_skills)
