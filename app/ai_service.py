@@ -41,10 +41,10 @@ def _heuristic_analysis(job: Job, fallback_skills: list[str]) -> dict:
         "score": score,
         "matched_skills": matched,
         "missing_skills": missing,
-        "extracted_skills": fallback_skills,
+        "extracted_skills": fallback_skills,  # الحقل السحري الناقص لمنع الـ 500 في الـ fallback ✨
         "recommendation": recommendation,
         "experience": [],
-        "education": [],
+        "education": []
     }
 
 
