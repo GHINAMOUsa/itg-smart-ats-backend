@@ -81,12 +81,16 @@ def _sync_candidate_profile_from_ai(db: Session, candidate: Candidate, analysis:
     candidate's profile so they show up on the candidate-details page, without duplicating
     entries the candidate already has.
     """
+    # التعديل السحري: جلب المهارات المحدثة مباشرة لضمان عدم التكرار ✨
     existing_skill_names = {s.skill.lower() for s in candidate.skills}
+    
     for skill in analysis.get("extracted_skills", []):
-        if skill.strip() and skill.strip().lower() not in existing_skill_names:
-            db.add(CandidateSkill(candidate_id=candidate.id, skill=skill.strip()))
-            existing_skill_names.add(skill.strip().lower())
+        cleaned_skill = skill.strip()
+        if cleaned_skill and cleaned_skill.lower() not in existing_skill_names:
+            db.add(CandidateSkill(candidate_id=candidate.id, skill=cleaned_skill))
+            existing_skill_names.add(cleaned_skill.lower())
 
+    # بقية الدالة تظل كما هي بدون تغيير
     existing_experience_keys = {(e.title.lower(), e.company.lower()) for e in candidate.experiences}
     for exp in analysis.get("experience", []):
         key = (exp["title"].lower(), exp["company"].lower())
@@ -117,7 +121,6 @@ def _sync_candidate_profile_from_ai(db: Session, candidate: Candidate, analysis:
                 )
             )
             existing_education_keys.add(key)
-
 
 @router.post("", response_model=ApplicationDetail, status_code=status.HTTP_201_CREATED)
 def submit_application(
