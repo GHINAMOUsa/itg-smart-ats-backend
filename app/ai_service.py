@@ -170,11 +170,15 @@ def analyze_resume(job: Job, resume_text: str, fallback_skills: list[str]) -> di
         score = int(data.get("match_score", 0))
         score = max(0, min(100, score))
 
+        # تنظيف المهارات المستخرجة
+        raw_extracted = [s for s in data.get("extracted_skills", []) if isinstance(s, str)] or fallback_skills
+        unique_extracted = list(set(raw_extracted))
+
         return {
             "score": score,
             "matched_skills": [s for s in data.get("matched_skills", []) if isinstance(s, str)],
             "missing_skills": [s for s in data.get("missing_skills", []) if isinstance(s, str)],
-            "extracted_skills": [s for s in data.get("extracted_skills", []) if isinstance(s, str)] or fallback_skills,
+            "extracted_skills": unique_extracted,
             "recommendation": data.get("recommendation") or "No recommendation returned by the model.",
             "experience": experience,
             "education": education,
