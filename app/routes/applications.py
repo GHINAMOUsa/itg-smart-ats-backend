@@ -82,7 +82,7 @@ def _sync_candidate_profile_from_ai(db: Session, candidate: Candidate, analysis:
     entries the candidate already has.
     """
     # التعديل السحري: جلب المهارات المحدثة مباشرة لضمان عدم التكرار ✨
-    existing_skill_names = {s.skill.lower() for s in candidate.skills}
+    existing_skill_names = {s.skill.lower() for s in db.query(CandidateSkill).filter(CandidateSkill.candidate_id == candidate.id).all()}
     
     for skill in analysis.get("extracted_skills", []):
         cleaned_skill = skill.strip()
