@@ -70,8 +70,8 @@ def update_candidate(
             db.add(CandidateSkill(candidate_id=candidate.id, skill=skill))
 
     db.commit()
-    db.refresh(candidate)
-    return candidate
+    # ✨ التعديل هنا: إعادة جلب الكانديديت بالعلاقات المحدثة بدلاً من refresh العادية
+    return _get_candidate_or_404(db, candidate_id)
 
 
 @router.post("/{candidate_id}/experiences", response_model=ExperienceOut, status_code=status.HTTP_201_CREATED)
