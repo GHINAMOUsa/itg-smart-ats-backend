@@ -81,47 +81,75 @@ def _sync_candidate_profile_from_ai(db: Session, candidate: Candidate, analysis:
     candidate's profile so they show up on the candidate-details page, without duplicating
     entries the candidate already has.
     """
-    # التعديل السحري: جلب المهارات المحدثة مباشرة لضمان عدم التكرار ✨
+    # 1. المهارات (Skills) ✨
     existing_skill_names = {s.skill.lower() for s in db.query(CandidateSkill).filter(CandidateSkill.candidate_id == candidate.id).all()}
     
     for skill in analysis.get("extracted_skills", []):
-        cleaned_skill = skill.strip()
-        if cleaned_skill and cleaned_skill.lower() not in existing_skill_names:
-            db.add(CandidateSkill(candidate_id=candidate.id, skill=cleaned_skill))
-            existing_skill_names.add(cleaned_skill.lower())
+        if isinstance(skill, str):
+            cleaned_skill = skill.strip()
+            if cleaned_skill and cleaned_skill.lower() not in existing_skill_names:
+                db.add(CandidateSkill(candidate_id=candidate.id, skill=cleaned_skill))
+                existing_skill_names.add(cleaned_skill.lower())
 
-    # بقية الدالة تظل كما هي بدون تغيير
+    # 2. الخبرات (Experiences) ✨ (دعم المفرد والجمع بمرونة)
     existing_experience_keys = {(e.title.lower(), e.company.lower()) for e in candidate.experiences}
-    for exp in analysis.get("experience", []):
-        key = (exp["title"].lower(), exp["company"].lower())
-        if key not in existing_experience_keys:
-            db.add(
-                CandidateExperience(
-                    candidate_id=candidate.id,
-                    title=exp["title"],
-                    company=exp["company"],
-                    description=exp.get("description"),
-                    start_date=exp["start_date"],
-                    end_date=exp.get("end_date"),
-                    is_current=exp.get("is_current", False),
-                )
-            )
-            existing_experience_keys.add(key)
+    raw_experiences = analysis.get("experiences") or analysis.get("experience") or analysis.get("extracted_experiences") or []
+    
+    for exp in raw_experiences:
+        if isinstance(exp, dict) and "title" in exp and "company" in exp:
+            title = str(exp.get("title", "")).strip()
+            company = str(exp.get("company", "")).strip()
+            
+            if title and company:
+                key = (title.lower(), company.lower())
+                if key not in existing_experience_keys:
+                    db.add(
+                        CandidateExperience(
+                            candidate_id=candidate.id,
+                            title=title,
+                            company=company,
+                            description=exp.get("description"),
+                            start_date=str(exp.get("start_date", "N/A")),
+                            end_date=str(exp.get("end_date", "")) if exp.get("end_date") else None,
+                            is_current=exp.get("is_current", False),
+                        )
+                    )
+                    existing_experience_keys.add(key)
 
+    # 3. التعليم (Education) ✨ (دعم تحويل graduation_year بأمان)
     existing_education_keys = {(e.degree.lower(), e.institution.lower()) for e in candidate.educations}
-    for edu in analysis.get("education", []):
-        key = (edu["degree"].lower(), edu["institution"].lower())
-        if key not in existing_education_keys:
-            db.add(
-                CandidateEducation(
-                    candidate_id=candidate.id,
-                    degree=edu["degree"],
-                    institution=edu["institution"],
-                    graduation_year=edu.get("graduation_year"),
-                )
-            )
-            existing_education_keys.add(key)
+    raw_education = analysis.get("education") or analysis.get("educations") or analysis.get("extracted_education") or []
+    
+    for edu in raw_education:
+        if isinstance(edu, dict) and "degree" in edu and "institution" in edu:
+            degree = str(edu.get("degree", "")).strip()
+            institution = str(edu.get("institution", "")).strip()
+            
+            if degree and institution:
+                key = (degree.lower(), institution.lower())
+                if key not in existing_education_keys:
+                    # تحويل graduation_year برفق إلى Integer إذا أمكن
+                    grad_year = edu.get("graduation_year")
+                    parsed_year = None
+                    if grad_year:
+                        try:
+                            # في حال كان التاريخ النصي مثل "2026" أو يحتوي أرقام
+                            import re
+                            years = re.findall(r'\b\d{4}\b', str(grad_year))
+                            if years:
+                                parsed_year = int(years[-1])
+                        except Exception:
+                            parsed_year = None
 
+                    db.add(
+                        CandidateEducation(
+                            candidate_id=candidate.id,
+                            degree=degree,
+                            institution=institution,
+                            graduation_year=parsed_year,
+                        )
+                    )
+                    existing_education_keys.add(key)
 @router.post("", response_model=ApplicationDetail, status_code=status.HTTP_201_CREATED)
 def submit_application(
     payload: ApplicationCreate,
