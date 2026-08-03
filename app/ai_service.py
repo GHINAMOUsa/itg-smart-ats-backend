@@ -141,14 +141,24 @@ def analyze_resume(job: Job, resume_text: str, fallback_skills: list[str]) -> di
 
         experience = []
         for exp in data.get("experience", []):
-            start = _parse_date(exp.get("start_date"))
-            if not start or not exp.get("title") or not exp.get("company"):
-                continue  # تخطي السجلات غير المكتملة
+            # 👈 تعديل: عدم حذف الخبرة إذا لم يستطع تحويل التاريخ، بل أخذ أول 4 أرقام (السنة) كـ Fallback
+            raw_start = str(exp.get("start_date", ""))
+            start = _parse_date(raw_start)
+            
+            # إذا فشل الـ Date parser وكانت تحتوي على سنة (مثل 2024) ننشئ تاريخ تقريبي كي لا تضيع الخبرة
+            if not start:
+                years = re.findall(r'\b(19\d\d|20\d\d)\b', raw_start)
+                if years:
+                    start = date(int(years[0]), 1, 1)
+
+            if not exp.get("title"):
+                continue  # نقبل الخبرة حتى لو اسم الشركة أو التاريخ فيه خلل بسيط
+
             experience.append(
                 {
                     "title": exp["title"],
-                    "company": exp["company"],
-                    "start_date": start,
+                    "company": exp.get("company") or "N/A",
+                    "start_date": start or date(2020, 1, 1), # تاريخ افتراضي لضمان عدم الحذف
                     "end_date": _parse_date(exp.get("end_date")),
                     "is_current": bool(exp.get("is_current", False)),
                     "description": exp.get("description"),
@@ -157,12 +167,12 @@ def analyze_resume(job: Job, resume_text: str, fallback_skills: list[str]) -> di
 
         education = []
         for edu in data.get("education", []):
-            if not edu.get("degree") or not edu.get("institution"):
+            if not edu.get("degree"):
                 continue
             education.append(
                 {
                     "degree": edu["degree"],
-                    "institution": edu["institution"],
+                    "institution": edu.get("institution") or "N/A",
                     "graduation_year": edu.get("graduation_year"),
                 }
             )
