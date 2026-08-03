@@ -11,15 +11,20 @@ import pdfplumber
 
 from app.config import settings
 
-
 def resolve_upload_path(url: str | None) -> Path | None:
-    """Maps a stored URL like '/uploads/resumes/xyz.pdf' back to its file on disk."""
-    if not url or not url.startswith("/uploads/"):
+    """Maps a stored URL or path back to its file on disk."""
+    if not url:
         return None
-    relative = url[len("/uploads/"):]
+    
+    # تحويل الرابط الكامل (إذا وجد) لاستخراج مسار الملف المحلي فقط
+    # مثلاً: "https://.../uploads/resumes/xyz.pdf" -> "resumes/xyz.pdf"
+    if "/uploads/" in url:
+        relative = url.split("/uploads/")[-1]
+    else:
+        relative = url.lstrip("/")
+
     path = Path(settings.UPLOAD_DIR) / relative
     return path if path.exists() else None
-
 
 def extract_text_from_pdf(path: Path) -> str:
     """
